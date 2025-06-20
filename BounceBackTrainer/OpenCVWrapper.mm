@@ -21,17 +21,19 @@ struct Target {
     cv::Point center;
     double radius;  // Only used for circular targets
     std::vector<cv::Vec3f> circles;  // For storing circular patterns
+    int quadrant;
     
     Target() : boundingBox(-1, -1, -1, -1), isCircular(false), targetNumber(0), 
-               center(-1, -1), radius(0) {}
+               center(-1, -1), radius(0), quadrant(0) {}
 };
 
 // Forward declarations for helper functions
 static std::string analyzeTrajectory(const std::vector<cv::Point>& trajectory, 
                                     const Target& target, int frameWidth, int frameHeight);
 static cv::Point predictNextPosition(const std::vector<cv::Point>& trajectory);
+static cv::Point detectBallByShape(const cv::Mat& frame);
 static cv::Point detectBallByColor(const cv::Mat& frame);
-static cv::Point detectBallByMotion(const cv::Mat& currentFrame, const cv::Mat& previousFrame);
+static cv::Point detectBallByMotion(const cv::Mat& gray, cv::Ptr<cv::BackgroundSubtractorMOG2> pMOG2);
 static std::vector<Target> detectTargets(const cv::Mat& frame, std::vector<cv::Rect>& tapeRects);
 static Target detectCircularTarget(const cv::Mat& frame);
 
@@ -65,6 +67,25 @@ static Target detectCircularTarget(const cv::Mat& frame);
             
             NSLog(@"[OpenCV] Video properties - Width: %d, Height: %d, FPS: %f", width, height, fps);
             
+            // Target and goal boundary detection variables
+            std::vector<Target> targets;
+            std::vector<cv::Rect> tapeRects;
+            cv::Rect goalBoundary(0, 0, width, height); // Default to full frame
+            bool goalBoundaryLocked = false;
+            bool targetsDetected = false;
+            int targetDetectionAttempts = 0;
+            const int MAX_DETECTION_ATTEMPTS = 30; // Increased attempts for scene setup
+            
+            // Quadrant definitions - will be updated once goal is locked
+            int midX = width / 2;
+            int midY = height / 2;
+            auto getQuadrant = [&](cv::Point pt) -> int {
+                if (pt.x < midX && pt.y < midY) return 1; // Top-Left
+                if (pt.x >= midX && pt.y < midY) return 2; // Top-Right
+                if (pt.x < midX && pt.y >= midY) return 3; // Bottom-Left
+                return 4; // Bottom-Right
+            };
+
             // Try 'MJPG' codec for .avi compatibility
             cv::VideoWriter writer(output, cv::VideoWriter::fourcc('M','J','P','G'), fps, cv::Size(width, height));
             if (!writer.isOpened()) {
@@ -73,12 +94,8 @@ static Target detectCircularTarget(const cv::Mat& frame);
             }
             NSLog(@"[OpenCV] Output writer created. Path: %s, Size: %dx%d, FPS: %f", output.c_str(), width, height, fps);
             
-            // Target detection
-            std::vector<Target> targets;
-            std::vector<cv::Rect> tapeRects;
-            bool targetsDetected = false;
-            int targetDetectionAttempts = 0;
-            const int MAX_DETECTION_ATTEMPTS = 10;
+            // Background Subtractor for motion detection
+            cv::Ptr<cv::BackgroundSubtractorMOG2> pMOG2 = cv::createBackgroundSubtractorMOG2();
             
             // Ball tracking variables
             std::vector<cv::Point> ballTrajectory;
@@ -105,27 +122,39 @@ static Target detectCircularTarget(const cv::Mat& frame);
                 frameCount++;
                 outputFrame = frame.clone();
                 
-                // Detect targets in first few frames
+                // Detect targets and goal boundary in first few frames
                 if (!targetsDetected && targetDetectionAttempts < MAX_DETECTION_ATTEMPTS) {
                     std::vector<Target> detectedTargets = detectTargets(frame, tapeRects);
-                    if (!detectedTargets.empty() || !tapeRects.empty()) {
+                    
+                    // Lock goal boundary if found. This is the highest priority.
+                    if (!tapeRects.empty() && !goalBoundaryLocked) {
+                        goalBoundary = tapeRects[0];
+                        midX = goalBoundary.x + goalBoundary.width / 2;
+                        midY = goalBoundary.y + goalBoundary.height / 2;
+                        goalBoundaryLocked = true;
+                        NSLog(@"[OpenCV] Goal boundary locked.");
+                    }
+
+                    // Populate targets list if not already done.
+                    if (targets.empty() && !detectedTargets.empty()) {
                         targets = detectedTargets;
-                        targetsDetected = true;
-                        
-                        // Log detected targets and tape
-                        if (!tapeRects.empty()) {
-                            NSLog(@"[OpenCV] Green tape detected: %lu pieces", tapeRects.size());
-                        }
-                        for (const auto& target : targets) {
-                            if (target.isCircular) {
-                                NSLog(@"[OpenCV] Circular Target %d detected: center=(%d,%d), radius=%f",
-                                      target.targetNumber, target.center.x, target.center.y, target.radius);
-                            } else {
-                                NSLog(@"[OpenCV] Rectangular Target %d detected: x=%d, y=%d, w=%d, h=%d",
-                                      target.targetNumber, target.boundingBox.x, target.boundingBox.y,
-                                      target.boundingBox.width, target.boundingBox.height);
+                        NSLog(@"[OpenCV] Targets found.");
+                    }
+                    
+                    // If we have BOTH the boundary AND the targets, we can finalize scene setup.
+                    if (goalBoundaryLocked && !targets.empty()) {
+                        // Assign quadrants to targets using the now-correct `getQuadrant`
+                        for (auto& target : targets) {
+                            if (target.quadrant == 0) { // Assign only once
+                                cv::Point center = target.isCircular ? target.center :
+                                    cv::Point(target.boundingBox.x + target.boundingBox.width / 2,
+                                              target.boundingBox.y + target.boundingBox.height / 2);
+                                target.quadrant = getQuadrant(center);
+                                NSLog(@"[OpenCV] Target %d assigned to quadrant %d", target.targetNumber, target.quadrant);
                             }
                         }
+                        targetsDetected = true; // Stop further scene detection
+                        NSLog(@"[OpenCV] Scene setup complete.");
                     }
                     targetDetectionAttempts++;
                 }
@@ -138,22 +167,28 @@ static Target detectCircularTarget(const cv::Mat& frame);
                 cv::Point currentBallPosition(-1, -1);
                 std::string detectionMethod = "None";
                 
-                // Try multiple detection methods
-                if (!prevGray.empty()) {
-                    // Method 1: Motion-based detection
-                    cv::Point motionBall = detectBallByMotion(gray, prevGray);
-                    if (motionBall.x >= 0 && motionBall.y >= 0) {
+                // Try multiple detection methods in order of preference
+                // 1. Shape detection (most accurate)
+                currentBallPosition = detectBallByShape(frame);
+                if (currentBallPosition.x >= 0) {
+                    detectionMethod = "Shape";
+                }
+
+                // 2. Motion detection (if shape fails)
+                if (currentBallPosition.x < 0) {
+                    cv::Point motionBall = detectBallByMotion(gray, pMOG2);
+                    if (motionBall.x >= 0) {
                         currentBallPosition = motionBall;
                         detectionMethod = "Motion";
                     }
-                    
-                    // Method 2: Color-based detection (if motion detection fails)
-                    if (currentBallPosition.x < 0) {
-                        cv::Point colorBall = detectBallByColor(frame);
-                        if (colorBall.x >= 0 && colorBall.y >= 0) {
-                            currentBallPosition = colorBall;
-                            detectionMethod = "Color";
-                        }
+                }
+                
+                // 3. Color detection (last resort)
+                if (currentBallPosition.x < 0) {
+                    cv::Point colorBall = detectBallByColor(frame);
+                    if (colorBall.x >= 0) {
+                        currentBallPosition = colorBall;
+                        detectionMethod = "Color";
                     }
                 }
                 
@@ -167,8 +202,10 @@ static Target detectCircularTarget(const cv::Mat& frame);
                     cv::Mat prediction = kalman.predict();
                     cv::Mat estimated = kalman.correct(measurement);
                     
-                    // Add to trajectory
-                    ballTrajectory.push_back(currentBallPosition);
+                    // Add to trajectory with a distance check to prevent jumps
+                    if (ballTrajectory.empty() || cv::norm(currentBallPosition - ballTrajectory.back()) < 80) {
+                        ballTrajectory.push_back(currentBallPosition);
+                    }
                     
                     // Keep only recent trajectory points (last 30 frames)
                     if (ballTrajectory.size() > 30) {
@@ -184,34 +221,17 @@ static Target detectCircularTarget(const cv::Mat& frame);
                     }
                 }
                 
-                // Draw targets and tape
-                if (targetsDetected) {
-                    // Draw tape in green
-                    for (const auto& rect : tapeRects) {
-                        cv::rectangle(outputFrame, rect, cv::Scalar(0, 255, 0), 2); // Green
-                        cv::putText(outputFrame, "TAPE", 
-                            cv::Point(rect.x, rect.y - 5), 
-                            cv::FONT_HERSHEY_SIMPLEX, 0.5, 
-                            cv::Scalar(0, 255, 0), 1); // Green
-                    }
-
-                    for (const auto& target : targets) {
-                        if (target.isCircular) {
-                            // Draw only the main circle for circular target
-                            cv::circle(outputFrame, target.center, target.radius, cv::Scalar(0, 255, 0), 2);
-                            cv::putText(outputFrame, "TARGET " + std::to_string(target.targetNumber),
-                                      cv::Point(target.center.x - 40, target.center.y - target.radius - 10),
-                                      cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
-                            
-                            // Draw target center
-                            cv::circle(outputFrame, target.center, 5, cv::Scalar(0, 255, 255), -1);
-                        } else {
-                            // Draw rectangular target
-                            cv::rectangle(outputFrame, target.boundingBox, cv::Scalar(0, 255, 0), 2);
-                            cv::putText(outputFrame, "TARGET " + std::to_string(target.targetNumber),
-                                      cv::Point(target.boundingBox.x, target.boundingBox.y - 10),
-                                      cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
-                        }
+                // Draw tape frame and targets
+                if (goalBoundaryLocked) {
+                    cv::rectangle(outputFrame, goalBoundary, cv::Scalar(0, 255, 0), 2);
+                }
+                for (const auto& target : targets) {
+                    if (target.isCircular) {
+                        // Draw circular target
+                        cv::circle(outputFrame, target.center, target.radius, cv::Scalar(0, 255, 0), 2);
+                        cv::putText(outputFrame, "TARGET " + std::to_string(target.targetNumber),
+                                  cv::Point(target.center.x - 40, target.center.y - target.radius - 10),
+                                  cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
                         
                         // Draw target center
                         cv::Point targetCenter = target.isCircular ? target.center : 
@@ -236,30 +256,47 @@ static Target detectCircularTarget(const cv::Mat& frame);
                               cv::Point(currentBallPosition.x + 10, currentBallPosition.y - 10),
                               cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 2);
                     
-                    // Check hits for each target
-                    for (const auto& target : targets) {
+                    // Quadrant-based hit detection
+                    int ballQuadrant = getQuadrant(currentBallPosition);
+                    double minDistance = 1e9;
+                    int bestTargetIndex = -1;
+
+                    for (size_t i = 0; i < targets.size(); ++i) {
+                        if (targets[i].quadrant != ballQuadrant) continue;
+
+                        const auto& target = targets[i];
                         bool isHit = false;
+                        double distance;
+
                         if (target.isCircular) {
-                            // For circular targets, check if ball is within radius
-                            double distance = cv::norm(currentBallPosition - target.center);
+                            distance = cv::norm(currentBallPosition - target.center);
                             isHit = distance <= target.radius;
                         } else {
-                            // For rectangular targets, use contains
                             isHit = target.boundingBox.contains(currentBallPosition);
+                            cv::Point center(target.boundingBox.x + target.boundingBox.width / 2,
+                                             target.boundingBox.y + target.boundingBox.height / 2);
+                            distance = cv::norm(currentBallPosition - center);
                         }
-                        
-                        if (isHit) {
-                            cv::putText(outputFrame, "HIT TARGET " + std::to_string(target.targetNumber) + "!",
-                                      cv::Point(30, 30 + target.targetNumber * 40),
-                                      cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 3);
-                            
-                            if (ballTrajectory.size() > 5) {
-                                std::string feedback = analyzeTrajectory(ballTrajectory, target, width, height);
-                                cv::putText(outputFrame, "Target " + std::to_string(target.targetNumber) + 
+
+                        if (isHit && distance < minDistance) {
+                            minDistance = distance;
+                            bestTargetIndex = i;
+                        }
+                    }
+                    
+                    // Only annotate best-matching target
+                    if (bestTargetIndex >= 0) {
+                        const auto& bestTarget = targets[bestTargetIndex];
+                        cv::putText(outputFrame, "HIT TARGET " + std::to_string(bestTarget.targetNumber) + "!",
+                            cv::Point(30, 30 + bestTarget.targetNumber * 40),
+                            cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 255), 3);
+
+                        if (ballTrajectory.size() > 5) {
+                            std::string feedback = analyzeTrajectory(ballTrajectory, bestTarget, width, height);
+                            cv::putText(outputFrame, "Target " + std::to_string(bestTarget.targetNumber) + 
                                           " Feedback: " + feedback,
-                                          cv::Point(30, 70 + target.targetNumber * 40),
-                                          cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
-                            }
+                                cv::Point(30, 70 + bestTarget.targetNumber * 40),
+                                cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
                         }
                     }
                 }
@@ -288,6 +325,12 @@ static Target detectCircularTarget(const cv::Mat& frame);
                             cv::Point(10, height - 40), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
                 cv::putText(outputFrame, "Detection: " + detectionMethod, 
                             cv::Point(10, height - 20), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
+                
+                // Draw quadrant lines for debugging if goal is locked
+                if (goalBoundaryLocked) {
+                    cv::line(outputFrame, cv::Point(midX, goalBoundary.y), cv::Point(midX, goalBoundary.y + goalBoundary.height), cv::Scalar(255, 255, 255), 1);
+                    cv::line(outputFrame, cv::Point(goalBoundary.x, midY), cv::Point(goalBoundary.x + goalBoundary.width, midY), cv::Scalar(255, 255, 255), 1);
+                }
                 
                 prevGray = gray.clone();
                 writer.write(outputFrame);
@@ -585,6 +628,29 @@ static cv::Point predictNextPosition(const std::vector<cv::Point>& trajectory) {
     return predicted;
 }
 
+// Helper function for ball detection using shape (HoughCircles)
+static cv::Point detectBallByShape(const cv::Mat& frame) {
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::GaussianBlur(gray, gray, cv::Size(7, 7), 2);
+
+    std::vector<cv::Vec3f> circles;
+    cv::HoughCircles(gray, circles, cv::HOUGH_GRADIENT, 1, gray.rows/8, 100, 30, 5, 50);
+
+    if (!circles.empty()) {
+        for (auto& circle : circles) {
+            cv::Point center(cvRound(circle[0]), cvRound(circle[1]));
+            int radius = cvRound(circle[2]);
+
+            // Filter by expected radius range
+            if (radius >= 5 && radius <= 50) {
+                return center; // Return the first valid circle center
+            }
+        }
+    }
+    return cv::Point(-1, -1);
+}
+
 // Helper function to detect ball by color
 static cv::Point detectBallByColor(const cv::Mat& frame) {
     cv::Mat hsv;
@@ -639,20 +705,19 @@ static cv::Point detectBallByColor(const cv::Mat& frame) {
     return bestCenter;
 }
 
-// Helper function to detect ball by motion
-static cv::Point detectBallByMotion(const cv::Mat& currentFrame, const cv::Mat& previousFrame) {
-    cv::Mat diff;
-    cv::absdiff(currentFrame, previousFrame, diff);
-    cv::threshold(diff, diff, 20, 255, cv::THRESH_BINARY);
-    
+// Helper function to detect ball by motion (now using Background Subtraction)
+static cv::Point detectBallByMotion(const cv::Mat& gray, cv::Ptr<cv::BackgroundSubtractorMOG2> pMOG2) {
+    cv::Mat fgMask;
+    pMOG2->apply(gray, fgMask);
+
     // Morphological operations to reduce noise
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-    cv::morphologyEx(diff, diff, cv::MORPH_OPEN, kernel);
-    cv::morphologyEx(diff, diff, cv::MORPH_CLOSE, kernel);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7, 7));
+    cv::morphologyEx(fgMask, fgMask, cv::MORPH_OPEN, kernel);
+    cv::morphologyEx(fgMask, fgMask, cv::MORPH_CLOSE, kernel);
     
     // Find contours
     std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(diff, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(fgMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     
     // Find the largest motion contour (likely the ball)
     double maxArea = 0;
@@ -660,12 +725,12 @@ static cv::Point detectBallByMotion(const cv::Mat& currentFrame, const cv::Mat& 
     
     for (const auto& contour : contours) {
         double area = cv::contourArea(contour);
-        if (area > 100 && area < 5000) { // Filter by size
+        if (area > 150 && area < 5000) { // Filter by size
             cv::Rect rect = cv::boundingRect(contour);
             cv::Point center(rect.x + rect.width / 2, rect.y + rect.height / 2);
             
             // Check if this is a reasonable ball position
-            if (center.x > 0 && center.x < currentFrame.cols && center.y > 0 && center.y < currentFrame.rows) {
+            if (center.x > 0 && center.x < gray.cols && center.y > 0 && center.y < gray.rows) {
                 if (area > maxArea) {
                     maxArea = area;
                     bestCenter = center;
