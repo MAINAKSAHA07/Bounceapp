@@ -555,56 +555,83 @@ static Target detectCircularTarget(const cv::Mat& frame) {
     return target;
 }
 
-// Modified analyzeTrajectory function to work with Target struct
+// Modified analyzeTrajectory function with enhanced, grid-based feedback
 static std::string analyzeTrajectory(const std::vector<cv::Point>& trajectory,
                                     const Target& target, int frameWidth, int frameHeight) {
-    if (trajectory.size() < 5) return "Need more trajectory data";
-    
-    cv::Point start = trajectory.front();
+    if (trajectory.size() < 2) return "Not enough data.";
+
+    // --- Trajectory Stats ---
     cv::Point end = trajectory.back();
-    cv::Point direction = end - start;
-    double angle = atan2(direction.y, direction.x) * 180 / CV_PI;
-    
     double totalDistance = 0;
     for (size_t i = 1; i < trajectory.size(); i++) {
         totalDistance += cv::norm(trajectory[i] - trajectory[i-1]);
     }
-    double avgSpeed = totalDistance / trajectory.size();
+    double avgSpeed = trajectory.size() > 1 ? totalDistance / (trajectory.size() - 1) : 0;
+
+    // --- 3x3 Grid Analysis ---
+    cv::Rect targetBox = target.boundingBox;
+    if (targetBox.width == 0 || targetBox.height == 0) return "Invalid target size.";
+
+    float zoneWidth = targetBox.width / 3.0f;
+    float zoneHeight = targetBox.height / 3.0f;
+
+    // Determine ball's hit zone (0, 1, or 2 for row/col)
+    int col = (end.x - targetBox.x) / zoneWidth;
+    int row = (end.y - targetBox.y) / zoneHeight;
+    col = std::max(0, std::min(2, col)); // Clamp to [0, 2]
+    row = std::max(0, std::min(2, row)); // Clamp to [0, 2]
+
+    // Target's center is always the middle zone (1, 1)
+    const int targetRow = 1;
+    const int targetCol = 1;
+
+    // --- Semantic Feedback Generation ---
+    const std::string rowLabels[] = {"Upper", "Center", "Lower"};
+    const std::string colLabels[] = {"Left", "Center", "Right"};
+    std::string zoneKey = rowLabels[row] + " " + colLabels[col];
+
+    std::map<std::string, std::string> zoneMessages = {
+        {"Upper Left",    "Great placement to top-left."},
+        {"Upper Center",  "Top-center – predictable shot."},
+        {"Upper Right",   "Sniper shot to top-right!"},
+        {"Center Left",   "Keepers expect this – aim wider."},
+        {"Center Center", "Middle shot – easy to stop."},
+        {"Center Right",  "Good try – but aim more left."},
+        {"Lower Left",    "Classic low-left corner shot."},
+        {"Lower Center",  "Low center – try the corners."},
+        {"Lower Right",   "Nice low-right target zone."}
+    };
     
-    // Get target center based on type
-    cv::Point targetCenter = target.isCircular ? target.center :
-        cv::Point(target.boundingBox.x + target.boundingBox.width/2,
-                 target.boundingBox.y + target.boundingBox.height/2);
-    
-    double distanceFromTarget = cv::norm(end - targetCenter);
-    
-    std::string feedback = "";
-    if (target.isCircular) {
-        // For circular target, provide more precise feedback based on rings
-        if (distanceFromTarget < target.radius * 0.2)
-            feedback = "Bullseye! Perfect shot!";
-        else if (distanceFromTarget < target.radius * 0.5)
-            feedback = "Great shot! Near the center!";
-        else if (distanceFromTarget < target.radius)
-            feedback = "Good shot, but try to aim more center";
-        else
-            feedback = "Missed the target - adjust your aim";
+    // --- Positional Guidance ---
+    std::string positionalFeedback;
+    if (row == targetRow && col == targetCol) {
+        positionalFeedback = "Perfect placement!";
     } else {
-        // For rectangular target
-        if (distanceFromTarget < 50)
-            feedback = "Excellent accuracy!";
-        else if (distanceFromTarget < 100)
-            feedback = "Good shot, try to aim more precisely";
-        else
-            feedback = "Work on your aim - too far from target";
+        // Vertical feedback (Y is inverted in image coordinates)
+        if (row > targetRow) positionalFeedback += "Aim higher";
+        else if (row < targetRow) positionalFeedback += "Aim lower";
+        
+        // Horizontal feedback
+        if (col > targetCol) positionalFeedback += (positionalFeedback.empty() ? "" : " and ") + std::string("more to the left");
+        else if (col < targetCol) positionalFeedback += (positionalFeedback.empty() ? "" : " and ") + std::string("more to the right");
     }
-    
+
+    // --- Power Feedback ---
+    std::string powerFeedback;
     if (avgSpeed > 20)
-        feedback += " - Fast ball!";
+        powerFeedback = " Good power!";
     else if (avgSpeed < 5)
-        feedback += " - Slow ball, increase power";
-    
-    return feedback;
+        powerFeedback = " Add more power!";
+
+    // --- Combine into Final Feedback ---
+    std::string finalFeedback = positionalFeedback;
+    if (row != targetRow || col != targetCol) {
+        // Prepend the zone description if it's not a perfect shot
+        finalFeedback = zoneMessages[zoneKey] + " " + positionalFeedback + ".";
+    }
+    finalFeedback += powerFeedback;
+
+    return finalFeedback;
 }
 
 // Helper function to predict next ball position
