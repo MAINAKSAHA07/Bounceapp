@@ -768,4 +768,3 @@ static cv::Point detectBallByMotion(const cv::Mat& gray, cv::Ptr<cv::BackgroundS
     
     return bestCenter;
 }
-
