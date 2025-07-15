@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var isProcessing = false
     @State private var showCamera = false
     @State private var cameraPermissionGranted = false
+    @State private var showLiveCamera = false
 
     var body: some View {
         NavigationStack {
@@ -27,6 +28,24 @@ struct ContentView: View {
                     .padding(.top)
 
                 VStack(spacing: 15) {
+                    // Live Camera Button
+                    Button(action: {
+                        checkCameraPermission()
+                    }) {
+                        HStack {
+                            Image(systemName: "camera.fill")
+                            Text("Live Camera Mode")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    .sheet(isPresented: $showLiveCamera) {
+                        LiveCameraView()
+                    }
+
                     Button(action: {
                         checkCameraPermission()
                     }) {
@@ -174,13 +193,13 @@ struct ContentView: View {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             cameraPermissionGranted = true
-            showCamera = true
+            showLiveCamera = true
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
                     cameraPermissionGranted = granted
                     if granted {
-                        showCamera = true
+                        showLiveCamera = true
                     } else {
                         errorMessage = "Camera access is required to record videos"
                         showError = true
