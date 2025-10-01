@@ -1,114 +1,263 @@
 # BounceBackTrainer
 
-BounceBackTrainer is an iOS application designed to help athletes improve their ball control and accuracy through real-time video analysis and feedback. The app uses computer vision techniques to detect impacts, analyze ball trajectories, and provide instant feedback to users.
+BounceBackTrainer is an advanced iOS application designed to help athletes improve their ball control and accuracy through real-time computer vision analysis. The app uses OpenCV and sophisticated detection algorithms to provide instant feedback on ball trajectories, target hits, and training performance.
 
-## Features
+## 🎯 Features
 
-### Real-time Video Analysis
-- **Pink Tape Detection**: Automatically detects fluorescent pink tape markers in the video feed
-- **Impact Detection**: Identifies when and where the ball makes contact with the target
-- **Target Tracking**: Detects and tracks the red bullseye target
-- **Distance Measurement**: Calculates and displays the distance between impact points and target
+### Real-time Computer Vision Analysis
+- **Live Camera Mode**: Real-time video processing with instant feedback
+- **Video Recording & Analysis**: Record training sessions and analyze them later
+- **Multiple Detection Modes**: Traditional and FFT-based ball detection algorithms
+- **Target Detection**: Automatic detection and tracking of red bullseye targets
+- **Pink Tape Boundary Detection**: Identifies fluorescent pink tape markers for goal area definition
+
+### Advanced Ball Detection
+- **FFT-based Detection**: Fast Fourier Transform algorithm for enhanced ball tracking
+- **Traditional Detection**: Fallback detection using contour analysis and color filtering
+- **Temporal Consistency**: Multi-frame validation to reduce false positives
+- **Confidence Scoring**: Real-time confidence metrics for detection accuracy
+- **Motion Tracking**: Sophisticated motion detection algorithms
 
 ### Smart Feedback System
-- **Zone Analysis**: Divides the target area into 9 zones (3x3 grid) for precise impact analysis
-- **Directional Feedback**: Provides specific feedback on how to adjust shots:
-  - Vertical adjustments ("Try to kick higher/lower")
-  - Horizontal adjustments ("Try to kick left/right")
-  - Perfect shot recognition ("Nice shot! Right on target!")
+- **Impact Detection**: Identifies when and where the ball makes contact with targets
+- **Zone Analysis**: Divides target areas into zones for precise impact analysis
+- **Real-time Feedback**: Instant visual and haptic feedback for successful hits
+- **Performance Metrics**: Tracks frame-by-frame data for detailed analysis
 
-### Technical Features
-- **OpenCV Integration**: Utilizes OpenCV for advanced computer vision processing
-- **Real-time Processing**: Processes video frames in real-time for instant feedback
-- **Motion Detection**: Sophisticated motion detection algorithms to track ball movement
-- **Color-based Detection**: Uses HSV color space for reliable pink tape and red target detection
+### Data Management
+- **Session Logging**: Comprehensive data logging of all training sessions
+- **Export Capabilities**: Export training data in JSON and CSV formats
+- **Performance Analytics**: Detailed statistics on detection accuracy and timing
+- **Debug Mode**: Advanced debugging features for development and testing
 
-## Requirements
+## 🏗️ Technical Architecture
+
+### Core Components
+- **SwiftUI Interface**: Modern, responsive UI built with SwiftUI
+- **OpenCV Integration**: Advanced computer vision processing using OpenCV 4.3.0
+- **AVFoundation**: Real-time camera capture and video processing
+- **CocoaPods**: Dependency management with OpenCV framework
+
+### Key Classes
+- **`LiveCameraView`**: Main real-time processing interface
+- **`DetectionManager`**: Manages goal and target detection state
+- **`BallDetectionManager`**: Handles ball detection and tracking
+- **`CameraFeedManager`**: Camera session management and frame processing
+- **`DataLogger`**: Comprehensive data logging and export functionality
+- **`OpenCVWrapper`**: Bridge between Swift and OpenCV C++ code
+
+### Detection Algorithms
+- **Color-based Detection**: HSV color space analysis for target identification
+- **Contour Analysis**: Shape detection for circular targets and ball identification
+- **FFT Processing**: Frequency domain analysis for enhanced ball detection
+- **Motion Detection**: Frame differencing for movement analysis
+- **Adaptive Thresholding**: Dynamic color range adjustment based on lighting conditions
+
+## 📱 User Interface
+
+### Main Features
+- **Live Camera Mode**: Real-time training with instant feedback
+- **Video Recording**: Capture training sessions for later analysis
+- **Ball Detection View**: Dedicated interface for ball tracking
+- **FFT Ball Detection**: Advanced frequency-based detection mode
+- **Video Library Integration**: Import videos from device library
+
+### Visual Feedback
+- **Target Overlays**: Visual indicators for detected targets
+- **Ball Tracking**: Real-time ball position visualization
+- **Impact Feedback**: Haptic and visual feedback for successful hits
+- **Status Indicators**: Real-time system status and performance metrics
+- **HUD Display**: Heads-up display with frame counters and detection status
+
+## 🔧 Requirements
 
 ### Hardware
-- iOS device with camera
-- Sufficient lighting for proper color detection
-- Pink fluorescent tape for marking the target area
-- Red bullseye target
+- iOS device with camera (iPhone/iPad)
+- Sufficient lighting for optimal color detection
+- Pink fluorescent tape for marking target boundaries
+- Red bullseye targets for training
 
 ### Software
-- iOS 13.0 or later
+- iOS 15.0 or later
 - Xcode 12.0 or later
-- OpenCV framework
+- OpenCV 4.3.0 framework
+- CocoaPods for dependency management
 
-## Setup Instructions
+## 🚀 Setup Instructions
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/yourusername/Bounceapp.git
-   cd BounceBackTrainer
-   ```
-
-2. **Install Dependencies**
-   - Open the project in Xcode
-   - Ensure OpenCV framework is properly linked
-   - Install any required pods (if using CocoaPods)
-
-3. **Build and Run**
-   - Select your target device
-   - Build and run the application
-
-## Usage Guide
-
-### Setting Up the Training Environment
-1. Mark the target area with fluorescent pink tape
-2. Place the red bullseye target in the desired location
-3. Ensure proper lighting for optimal detection
-
-### Using the App
-1. Launch the app and grant camera permissions
-2. Position the camera to capture both the target area and the training space
-3. Start training:
-   - The app will automatically detect the pink tape boundaries
-   - The red bullseye will be tracked
-   - Impacts will be detected and analyzed
-   - Real-time feedback will be provided
-
-### Understanding the Feedback
-- **Green Rectangle**: Detected pink tape boundary
-- **Yellow Circle**: Detected red bullseye target
-- **Red Dot**: Impact point
-- **Yellow Line**: Distance measurement
-- **Text Overlay**: Zone information and feedback
-
-## Technical Details
-
-### Color Detection
-- Pink Tape: HSV range (140-160, 100-255, 100-255)
-- Red Target: HSV ranges (0-10, 100-255, 100-255) and (160-179, 100-255, 100-255)
-
-### Motion Detection
-- Minimum contour area: 500 pixels
-- Frame difference threshold: 25
-
-### Target Zones
-The target area is divided into 9 zones:
-```
-Upper Left    | Upper Center    | Upper Right
-Center Left   | Center          | Center Right
-Lower Left    | Lower Center    | Lower Right
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/Bounceapp.git
+cd BounceBackTrainer
 ```
 
-## Contributing
+### 2. Install Dependencies
+```bash
+# Install CocoaPods if not already installed
+sudo gem install cocoapods
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+# Install project dependencies
+pod install
+```
 
-## License
+### 3. Open Project
+```bash
+# Open the workspace (not the project file)
+open BounceBackTrainer.xcworkspace
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### 4. Build and Run
+- Select your target device or simulator
+- Build the project (⌘+B)
+- Run the application (⌘+R)
 
-## Acknowledgments
+## 📖 Usage Guide
 
-- OpenCV community for the computer vision framework
-- Contributors and testers who helped improve the application
+### Setting Up Training Environment
+1. **Mark Boundaries**: Use fluorescent pink tape to mark the goal area
+2. **Place Targets**: Position red bullseye targets in desired locations
+3. **Ensure Lighting**: Provide adequate lighting for optimal detection
+4. **Position Camera**: Mount device to capture the full training area
 
-## Support
+### Using Live Camera Mode
+1. **Launch App**: Open BounceBackTrainer
+2. **Grant Permissions**: Allow camera and photo library access
+3. **Start Live Mode**: Tap "Live Camera Mode"
+4. **Wait for Goal Detection**: App will automatically detect pink tape boundaries
+5. **Lock Targets**: Tap to lock detected red targets
+6. **Start Ball Detection**: Activate ball tracking after targets are locked
+7. **Begin Training**: Start your training session with real-time feedback
 
-For support, please open an issue in the GitHub repository or contact the development team.
+### Using Video Analysis
+1. **Record Video**: Use "Record Video" feature or import from library
+2. **Select Video**: Choose video from device library
+3. **Analyze**: Tap "Analyze Video" to process the recording
+4. **View Results**: Watch analyzed video with detection overlays
+5. **Export Data**: Save results and export training data
+
+### Understanding Feedback
+- **Green Rectangles**: Locked target boundaries
+- **Blue Circles**: Detected ball positions
+- **Yellow Indicators**: Current target detections
+- **Red Dots**: Impact points
+- **Status Text**: Real-time detection status and performance metrics
+
+## 🔬 Technical Details
+
+### Color Detection Parameters
+```swift
+// Pink Tape Detection
+HSV Range: (140-170, 100-255, 100-255)
+
+// Red Target Detection (dual ranges for color wrap-around)
+HSV Range 1: (0-10, 100-255, 100-255)
+HSV Range 2: (160-179, 100-255, 100-255)
+
+// Ball Detection Colors
+White: (0-180, 0-30, 200-255)
+Orange: (10-20, 100-255, 100-255)
+```
+
+### Detection Thresholds
+- **Minimum Contour Area**: 500 pixels
+- **Frame Difference Threshold**: 25
+- **Ball Confidence Minimum**: 0.3
+- **Target Validation Frames**: 5 consecutive frames
+- **Temporal Consistency Distance**: 80 pixels
+
+### Performance Optimizations
+- **Adaptive Lighting**: Dynamic HSV range adjustment
+- **Frame Rate Optimization**: Configurable processing modes
+- **Memory Management**: Efficient frame buffer handling
+- **Background Processing**: Non-blocking UI with async processing
+
+## 📊 Data Export
+
+### Available Formats
+- **JSON Export**: Complete session data with timestamps
+- **CSV Export**: Tabular data for spreadsheet analysis
+
+### Exported Data
+- Frame-by-frame ball positions
+- Target detection coordinates
+- Impact events and timing
+- Performance metrics and statistics
+- Session duration and summary data
+
+## 🛠️ Development
+
+### Project Structure
+```
+BounceBackTrainer/
+├── BounceBackTrainer/          # Main app source
+│   ├── Views/                  # SwiftUI view components
+│   ├── Managers/               # Core functionality classes
+│   ├── OpenCV/                 # Computer vision integration
+│   └── Resources/              # Assets and configuration
+├── BounceBackTrainerTests/     # Unit tests
+├── BounceBackTrainerUITests/   # UI tests
+└── Pods/                       # CocoaPods dependencies
+```
+
+### Key Files
+- `ContentView.swift`: Main app interface
+- `LiveCameraView.swift`: Real-time processing view
+- `OpenCVWrapper.mm`: OpenCV integration bridge
+- `DetectionManager.swift`: Detection state management
+- `DataLogger.swift`: Data logging and export
+
+### Debugging Features
+- **Debug Mode Toggle**: Enable detailed logging
+- **Frame Saving**: Save frames for analysis
+- **Performance Monitoring**: Real-time processing metrics
+- **Console Logging**: Comprehensive debug output
+
+## 🤝 Contributing
+
+We welcome contributions! Please follow these guidelines:
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Commit your changes**: `git commit -m 'Add amazing feature'`
+4. **Push to the branch**: `git push origin feature/amazing-feature`
+5. **Open a Pull Request**
+
+### Development Setup
+- Ensure OpenCV is properly linked
+- Test on both simulator and physical device
+- Follow SwiftUI best practices
+- Maintain backward compatibility
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **OpenCV Community**: For the powerful computer vision framework
+- **Apple**: For SwiftUI and AVFoundation frameworks
+- **Contributors**: All developers who have contributed to this project
+- **Testers**: Users who provided valuable feedback and testing
+
+## 📞 Support
+
+For support and questions:
+- **Issues**: Open an issue in the GitHub repository
+- **Documentation**: Check the inline code documentation
+- **Community**: Join our development discussions
+
+## 🔄 Version History
+
+### Current Version: 1.0
+- Real-time ball detection and tracking
+- Target detection and impact analysis
+- Live camera mode with instant feedback
+- Video recording and analysis capabilities
+- Comprehensive data logging and export
+- Advanced FFT-based detection algorithms
+
+---
+
+**BounceBackTrainer** - Elevate your training with computer vision-powered feedback
 
 
